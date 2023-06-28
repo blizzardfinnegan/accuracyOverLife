@@ -5,8 +5,6 @@ use ordered_float::OrderedFloat;
 
 const ITERATION_COUNT:&str="iterations completed this run";
 const PASS_COUNT:&str="passing iterations";
-const STD_DEV:&str="Standard deviation";
-const MEDIAN:&str="Median";
 const DEFAULT_LOWER:f64=35.8;
 const DEFAULT_UPPER:f64=36.2;
 pub struct OutputFile{
@@ -56,9 +54,7 @@ impl OutputFile{
         for name in device_names{
             config.with_section(Some(name))
                   .set(ITERATION_COUNT,0.to_string())
-                  .set(PASS_COUNT,0.to_string())
-                  .set(STD_DEV,0.to_string())
-                  .set(MEDIAN, 0.to_string());
+                  .set(PASS_COUNT,0.to_string());
         };
         let mut filename = String::from("output/");
         filename.push_str(&Local::now().to_rfc3339());
@@ -70,12 +66,16 @@ impl OutputFile{
     }
     
     pub fn write_values(&mut self, current_state:&TestState,mut upper_bound:Option<f64>,mut lower_bound:Option<f64>){
-        if upper_bound == None{
-            upper_bound = Some(DEFAULT_UPPER);
-        }
-        if lower_bound == None{
-            lower_bound = Some(DEFAULT_LOWER);
-        }
+        let local_upper:f64;
+        let local_lower:f64;
+        match upper_bound{
+            None => local_upper = DEFAULT_UPPER,
+            Some(forced_upper) => local_upper = forced_upper,
+        };
+        match lower_bound{
+            None => local_lower = DEFAULT_LOWER,
+            Some(forced_lower) => local_lower = forced_lower,
+        };
         let data_map = current_state.get_data();
         data_map.iter().for_each(|(device,value_map)|{
             let mut value_list:Vec<&OrderedFloat<f64>> = value_map.keys().collect();
@@ -83,13 +83,10 @@ impl OutputFile{
             let mut index_list:Vec<u64> = Vec::new();
             let mut iteration_count = 0;
             let mut sum = 0;
-            let mut std_dev_intermediate = 0.0;
-            let mut median = 0.0;
             let mut pass_iteration_count = 0;
             value_map.iter().for_each(|(value,count)|{
                 iteration_count += count;
-                //                          unwraps are required and safe here
-                if value.into_inner() > lower_bound.unwrap() && value.into_inner() < upper_bound.unwrap(){
+                if value.into_inner() > local_lower && value.into_inner() < local_upper{
                     pass_iteration_count += count;
                 }
                 sum += (value.into_inner() * *count as f64) as u128;
@@ -100,38 +97,11 @@ impl OutputFile{
                 counter += value_map.get(value).unwrap();
                 index_list.push(counter.clone());
             }
-            let mean = sum as f64 / iteration_count as f64;
-            let median_index = (iteration_count + 1) / 2;
-            if value_list.len() < 2{
-                median = value_list[0].into_inner();
-            }
-            else{
-                for i in 0..index_list.len(){
-                    let index_guess = index_list[i];
-                    if index_guess >= median_index{
-                        if iteration_count % 2 == 0 || index_guess > (median_index + 1){
-                            median = value_list[i-1].into_inner();
-                        }
-                        else{
-                            median = (value_list[i+1].into_inner() + value_list[i].into_inner()) / 2.0;
-                        }
-                    }
-                }
-            }
 
-            value_map.iter().for_each(|(value,count)|{
-                for _ in 0..*count{
-                    std_dev_intermediate += (value - mean).powi(2);
-                }
-            });
-
-            let std_dev_final = (std_dev_intermediate / iteration_count as f64).sqrt();
             let saved_data = &mut self.file;
             saved_data.with_section(Some(device))
                 .set(ITERATION_COUNT, iteration_count.to_string())
-                .set(PASS_COUNT,pass_iteration_count.to_string())
-                .set(STD_DEV,std_dev_final.to_string())
-                .set(MEDIAN,median.to_string());
+                .set(PASS_COUNT,pass_iteration_count.to_string());
         });
         _ = self.file.write_to_file(self.filename.clone());
     }

@@ -1,21 +1,20 @@
 mod gpio_facade;
 mod output_facade;
+mod serial;
 use std::{fs,path::Path,io::{stdin,stdout}, thread,time::Duration,sync::Arc};
 use chrono::{DateTime,Local};
-use gpio_facade::{Fixture,Direction};
+use gpio_facade::Fixture;
 
-use crate::output_facade::{TestState, OutputFile};
 
-const VERSION:&str = "0.0.0-alpha.1";
+const VERSION:&str = "5.0.0-alpha.1";
 const DEFAULT_ITERATIONS:u64 = 10;
-const CAMERA_FILE_PREFIX:&str = "video-cam-";
 
 fn main() {
+    let mut map = std::collections::HashMap::new();
+    map.insert("some value", 5);
+    print!("{:?}",map);
     setup_logs();
     log::info!("Rust OCR version {}",VERSION);
-    let mut serials_set = false;
-    let mut cameras_configured = false;
-    let mut iteration_count = DEFAULT_ITERATIONS;
 
     //Initialise fixture
     let mut fixture:Option<Fixture> = None;
@@ -46,9 +45,11 @@ fn main() {
         Err(error) =>{
             log::warn!("Could not open dev directory! Did you run with `sudo`?");
             log::debug!("{}",error);
+            return;
         }
     }
 
+    #[allow(unreachable_code)]
     loop{
         //Send fixture down
         //for all serials:
