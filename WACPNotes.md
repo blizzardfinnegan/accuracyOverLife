@@ -115,10 +115,10 @@ Port:                   01 19  (rendezvous)
         obj. version:   00 65
         bitmask:        00
         Variable size:  00 12
-                        e1 24 81 d1 cc b6 45 73 af 29 f1 63 42 53 85 cc
         Client GUID:    ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
-                        00 21
+        example:        e1 24 81 d1 cc b6 45 73 af 29 f1 63 42 53 85 cc
         DDS Version:    00 00
+        example:        00 21
         Dyn. data size: 00 00
         obj. CRC:       c0 1b
     Msg CRC:            26 5a
@@ -168,7 +168,6 @@ packet CRC:             XX XX
 ```
 
 ### Temp Request
-\x17\x01\x0c\x00\x00\x00\x1a\x01\x1a\x00\x03\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\xe9\x32\x0e\xdf
 ```
 Preamble:               17 01 0c
 Packet length:          00 00 00 1a
@@ -182,11 +181,9 @@ packet CRC:             0e df
 ```
 ### Temp Response
 
-Failed temp:  17010c0000004e011900030f000000003b000000003400030001002e00cd000010000000000000000000030004000f0f0d000000130075001f000d00c80000064395ff7400049a2d6237885aac3b
+ex. failed temp: `17010c0000004e011900030f000000003b000000003400030001002e00cd000010000000000000000000030004000f0f0d000000130075001f000d00c80000064395ff7400049a2d6237885aac3b`
 
-Success temp: 17010c0000004e011900030f000000003b000000003400030001002e00cd000010000000000000000000010000000f0f0d000000130075001f000d00c80000064398ee520001bb0c039ae730852e
-17010c0000001a0119
-001d0f0100000007000000000083b99238
+ex.success temp: `17010c0000004e011900030f000000003b000000003400030001002e00cd000010000000000000000000010000000f0f0d000000130075001f000d00c80000064398ee520001bb0c039ae730852e`
 
 ```
 Preamble:                   17 01 0c
@@ -269,36 +266,4 @@ for byte in buffer
 
 return CRC
 ```
-
----
-
-# Code breakdown
-
-## Message to send
-- Message
-    - Family:  FmTEMP
-    - Genus:   GnREQUEST
-    - Species: SpGET_TEMP
-- Object: CSTPPSelector
-    - Family:  FmTEMP
-    - Genus:   GnPARAMETER
-    - Species: SpSELECTOR
-    - No members
-
-## Message hopefully recieved
-- Message
-    - Family:    FmTEMP
-    - Genus:     GnSTATUS
-    - Species:   SpREPORT_TEMP
-- Object: CTempDData
-    - Family:    FmTEMP
-    - Genus:     GnDATA
-    - Species:   SpDATA
-    - STime:     0
-    - Status:    DATA_COMPLETE (hopefully)
-    - ExtStatus: 0
-    - Source:    ????
-    - Mode:      ????
-    - Method:    IR
-    - Temp:      Temp (float) in kelvin, followed by a 16-bit unsigned int containing status bits
 
