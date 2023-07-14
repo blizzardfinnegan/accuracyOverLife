@@ -78,7 +78,7 @@ impl TTY{
         let mut reader = BufReader::new(&mut self.tty);
         let mut read_buffer: Vec<u8> = Vec::new();
         _ = reader.read_to_end(&mut read_buffer);
-        if read_buffer.len() > 0 {
+        if read_buffer.len() == 78 {
             //Steps:
             //  2. find the 4 bytes that contain the temperature information
             //  3. Convert to float
@@ -88,6 +88,7 @@ impl TTY{
 
             //from_be_bytes : From Big-Endian bytes.
             let preamble = u32::from_be_bytes([0x00,buffer[0],buffer[1],buffer[2]]);
+            //Predefined WACP Preamble
             if preamble != 0x17010c {
                 log::error!("No preamble found! Bad packet. Returning null.");
                 return None;
@@ -103,6 +104,7 @@ impl TTY{
             //Buffer[7..8] are port numbers and not actually important for anything for our purposes
             
             let msg_class_id = u32::from_be_bytes([buffer[9],buffer[10],buffer[11],buffer[12]]);
+            //Expected message class: Temperature Response [assumed]
             if msg_class_id != 0x00030f00 {
                 log::error!("Unknown message response class: {}. See WACP documentation.",msg_class_id);
                 return None;
@@ -116,28 +118,31 @@ impl TTY{
                 return None;
             }
 
-            let encrypted = u16::from_be_bytes([buffer[17],buffer[18]]);
+            let encrypted = buffer[17];//u16::from_be_bytes([buffer[17],buffer[18]]);
+            //Encryption bytes are not implemented as of now, and this code does not know how to
+            //interpret encrypted or compressed data.
             if encrypted != 0x0{
                 log::error!("Message potentially encrypted! Consult documentation concerning bitmask {}!",encrypted);
             }
 
             //Bytes counted in packet length but not in msg length: 19
             //Bytes counted in msg length but not in obj length:     7
-            let obj_size = u32::from_be_bytes([buffer[19],buffer[20],buffer[21],buffer[22]]);
+            let obj_size = u32::from_be_bytes([buffer[18],buffer[19],buffer[20],buffer[21]]);
             if obj_size as usize != (buffer.len() - 26) {
                 log::error!("Bad object size! Expected size: {}, Actual size: {}",
                                                 obj_size, buffer.len() - 26);
                 return None;
             }
 
-            let obj_id = u32::from_be_bytes([buffer[23],buffer[24],buffer[25],buffer[26]]);
+            let obj_id = u32::from_be_bytes([buffer[22],buffer[23],buffer[24],buffer[25]]);
+            //ObjectID = CTempDData
             if obj_id != 0x00030001{
                 log::error!("Unknown object ID: {} Consult documentation.",obj_id);
                 return None;
             }
 
             let obj_size_no_header =
-                    u32::from_be_bytes([buffer[27],buffer[28],buffer[29],buffer[30]]);
+                    u16::from_be_bytes([buffer[26],buffer[27]]);
             //Bytes counted in packet length but not in msg length: 19
             //Bytes counted in msg length but not in obj length:     7
             //bytes counted in obj length but not obj. internal len: 6
@@ -147,42 +152,48 @@ impl TTY{
                 return None;
             };
 
-            let obj_version = u16::from_be_bytes([buffer[31],buffer[32]]);
+            let obj_version = u16::from_be_bytes([buffer[28],buffer[29]]);
+            //This code is written to interpret version 205. Versions are backwards compatible, at
+            //time of writing.
             if obj_version > 0x00cd{
                 log::error!("Object version newer than expected! Manually check response.");
                 panic!("Unexpected object version. Here be dragons.");
             };
 
-            let obj_bitmask = buffer[33];
+            let obj_bitmask = buffer[30];
+            //Encryption bytes are not implemented as of now, and this code does not know how to
+            //interpret encrypted or compressed data.
             if obj_bitmask != 0x00{
                 log::error!("Bad object bitmask! Consult documentation concerning bitmask {}.",obj_bitmask);
                 return None;
             };
 
-            let static_size = u16::from_be_bytes([buffer[34],buffer[35]]);
+            let static_size = u16::from_be_bytes([buffer[31],buffer[32]]);
+            //Static data in this packet type is expected to take 16 bytes.
             if static_size != 0x0010{
                 log::error!("Unexpected static variable size. Manually check response.");
                 panic!("Unexpected static variable size. Here be dragons.");
             };
+
             //static values for time, status, and extended status [36-49] are currently unknown. Will add
             //values when known.
             
-            let source      = buffer[49];
+            let source      = buffer[46];
             if source != 0x0f{
                 log::error!("unexpected device response! Expected source is Disco (0x0f), device reports as {}",source);
                 return None;
             };
 
-            let op_mode     = buffer[50];
+            let op_mode     = buffer[47];
             if op_mode != 0x0f{
                 log::error!("Unexpected operation mode. Temperature is not trustworthy. Expected op mode is tympanic (0x0f), device reports as {}",op_mode);
                 return None;
             };
 
-            //let calc_method = buffer[51];
+            //let calc_method = buffer[48];
             //Unknown calc method response for unadjusted mode. will edit when known.
             
-            let encapsulated_obj_size = u32::from_be_bytes([buffer[52],buffer[53],buffer[54],buffer[55]]);
+            let encapsulated_obj_size = u32::from_be_bytes([buffer[49],buffer[50],buffer[51],buffer[52]]);
             //Bytes counted in packet length but not in msg length: 19
             //Bytes counted in msg length but not in obj length:     7
             //bytes counted in obj len but not obj. internal len:    6
@@ -193,7 +204,7 @@ impl TTY{
                 return None;
             };
 
-            let encap_obj_id = u32::from_be_bytes([buffer[56],buffer[57],buffer[58],buffer[59]]);
+            let encap_obj_id = u32::from_be_bytes([buffer[53],buffer[54],buffer[55],buffer[56]]);
             if encap_obj_id != 0x0075001f {
                 log::error!("Unexpected encapsulated object ID! Please manually check response.");
                 panic!("Unexpected encapsulated object ID. Here be dragons.");
@@ -204,39 +215,41 @@ impl TTY{
             //bytes counted in obj len but not obj. internal len:        6
             //bytes counted in object but not in encapsulated obj.:     27
             //bytes counted in encap obj but not in encap obj int. len: 13
-            let encap_obj_size = u16::from_be_bytes([buffer[60],buffer[61]]);
+            let encap_obj_size = u16::from_be_bytes([buffer[57],buffer[58]]);
             if encap_obj_size as usize != buffer.len() - 72{
                 log::error!("Bad encapsulated object size! Expected size: {}, actual size: {}",
                                                             encap_obj_size, buffer.len() - 72);
                 return None;
             };
 
-            let encap_obj_version = u16::from_be_bytes([buffer[62],buffer[63]]);
+            let encap_obj_version = u16::from_be_bytes([buffer[59],buffer[60]]);
             if encap_obj_version > 0x00c8{
                 log::error!("Encapsulated object newer version than expected. Manually check response.");
                 panic!("Response contains too new of an encapsulated object version.");
             };
 
-            let encap_obj_bitmask = buffer[64];
+            let encap_obj_bitmask = buffer[61];
             if encap_obj_bitmask != 0x00{
                 log::error!("Encapsulated object contains unknown bitmask. Check documentation for bitmask {}",encap_obj_bitmask);
                 panic!("Bad encapsulated object bitmask.");
             };
 
-            let encap_obj_var_size = u16::from_be_bytes([buffer[65],buffer[66]]);
+            let encap_obj_var_size = u16::from_be_bytes([buffer[62],buffer[63]]);
             //encapsulated object is CNumDFloat. That is, a float [4 byte], followed by a 2 byte status bitmask
-            if encap_obj_var_size as usize != 6{
+            if encap_obj_var_size != 6{
                 log::error!("Encapsulated object is wrong size for CNumDFloat! Manually check response.");
                 panic!("Encapsulated object's static variable size is an unexpected value. [Not 6]");
             };
 
-            let disco_temp_status = u16::from_be_bytes([buffer[71],buffer[72]]);
+            let disco_temp_status = u16::from_be_bytes([buffer[68],buffer[69]]);
             if disco_temp_status ^ 0x0001 != 0{
                 log::error!("Unexpected disco status! Disco is now in status {}!",disco_temp_status);
                 todo!();
             };
 
-            let temp = f32::from_be_bytes([buffer[67],buffer[68],buffer[69],buffer[70]]);
+            let temp = f32::from_be_bytes([buffer[64],buffer[65],buffer[66],buffer[67]]);
+            //The value the Disco reports is in Kelvin. Convert to Celsius for easier comparison
+            //with bounds.
             return Some(temp - 273.15);
         }
         else {
