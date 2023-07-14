@@ -1,19 +1,11 @@
-# Notes on how things are currently done
-
-We only need the client, since the server is running on the Disco already.
-
-CRC is put at the end of the message (according to spec) and is a 16-bit int generated using a LUT.
-
-All messages sent unless otherwise stated contain no object, and are unencrypted
-
-All I really need is a single request packet, and where in the response bitstream to look for the float.
+# WACP Communication
 
 ## Packet formatting
 
 ```
 Preamble:               17 01 0c
 Packet length:          XX XX XX XX
-Port:                   01 19 (rendezvous) / 0x011A (WACP)
+Port:                   01 19 (rendezvous) / 01 1A (WACP)
     Msg. Class ID:      XX XX XX XX 
     Msg. Size:          XX XX XX XX
     encrypt/comp:       00 
@@ -35,23 +27,24 @@ packet CRC:             XX XX
 4-byte object classes: 
 
 - Class groups
-    - `0x00170000`: Class session mask
+    - `00 17 00 00`: Class session mask
         - exception: `0x00171000` is a 2-byte size parameter
-    - `0x005c0000`: Collection mask
-    - `0x00001200`: Extended size mask
+    - `00 5c 00 00`: Collection mask
+    - `00 00 12 00`: Extended size mask
 - Individual classes:
-    - `0x00010000`: CECGDPacer object
-    - `0x001B0000`: CSpiroDStd object
+    - `00 01 00 00`: CECGDPacer object
+    - `00 1B 00 00`: CSpiroDStd object
 
 CRC calculations documented farther down
 
 ## Rendezvous conversation
 Host:   `0x17010c000000250119001d0b0100000012000000000b524e445a434f4e4e45435457f3e929`  [37 bytes long]
+
 Device: `0x17010c0000001a0119001d0f0100000007000000000083b99238`                        [26 bytes long]
-           17010c0000001a0119001d0f0100000007000000000083b99238
+
 Host:   `0x17010c0000003b0119001d0102000000280000000021001d0000001b0065000012ffffffffffffffffffffffffffffffff00000000c01b499ed576`
+
 Device: `0x17010c0000003b0119001d0103000000280000000021001d0000001b0065000012ffffffffffffffffffffffffffffffff00000000c01b265a85f8`
-           17010c0000003b0119001d0103000000280000000021001d0000001b0065000012e12481d1ccb64573af29f163425385cc00210000dd77ad4842f5
 
 ### Rendezvous breakdown
 
@@ -308,53 +301,4 @@ return CRC
     - Mode:      ????
     - Method:    IR
     - Temp:      Temp (float) in kelvin, followed by a 16-bit unsigned int containing status bits
-
-
----
-
-## Main.c breakdown
-
-
-Open serial connection
-wait for the device to be connected
-print menu
-- disconnect:               send prebuilt disconnect message
-- get device description:   Send message Family Device, Genus Request, Species Device CRST SpGET DeviceDescription
-- Get temperature:          send message family temp, genus request, species TEMP CRST SpGET Temp
-- Send respiration status:  irrelevant submenu
-- Send ACK
-- Send NAK
-- Send NAK w/ message
-
-## Serial communication server breakdown
-
-Connect: Contains all the serial port settings
-SendMessage: Takes in a buffer of data, which is then flushed to the serial adapter
-StartClient: async write/reads. See here for read parsing
-
-## WACP Parser function
-
-Takes in a buffer of data, along with who sent the message, and how long the current packet is
-
-Make sure the buffer contains at least a packet header before trying to parse.
-
-Check that the preamble is `0x17 0x01 0x0C` (CTL_W, CTL_A, CTL_L)
-
-Read in a 32-bit int from the buffer, just after the preamble. This is how long the packet is. Check this against the buffer's actual size
-
-    check the packet's CRC
-    
-    check the preamble (yes we do this twice, but its in a different function this time)
-    
-    return the length of the enclosed message
-
-if we can unwrap the message safely, pass it to the message handler
-
-    read in a 32-bit int (message class ID), shift right 16
-
-    if FmTRAP [parse]
-
-    else shift pointer past the object size and encryption byte, pass object to RecvMessage
-    
-        
 
