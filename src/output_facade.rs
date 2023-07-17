@@ -1,19 +1,19 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{collections::{HashMap,BTreeMap}, sync::Mutex};
 use ini::Ini;
 use chrono::Local;
 use ordered_float::OrderedFloat;
 
 const ITERATION_COUNT:&str="iterations completed this run";
 const PASS_COUNT:&str="passing iterations";
-const DEFAULT_LOWER:f64=35.8;
-const DEFAULT_UPPER:f64=36.2;
+const DEFAULT_LOWER:f32=35.8;
+const DEFAULT_UPPER:f32=36.2;
 pub struct OutputFile{
     file:Ini,
     filename:String,
 }
 
 pub struct TestState{
-    data_map: Mutex<HashMap<String,HashMap<OrderedFloat<f64>,u64>>>
+    data_map: Mutex<HashMap<String,BTreeMap<OrderedFloat<f32>,u64>>>
 }
 
 impl TestState{
@@ -22,14 +22,14 @@ impl TestState{
             data_map:Mutex::new(HashMap::new())
         };
         device_names.iter()
-            .for_each(|device| _ = output.data_map.lock().unwrap().insert(device.to_string(),HashMap::new()));
+            .for_each(|device| _ = output.data_map.lock().unwrap().insert(device.to_string(),BTreeMap::new()));
         return output;
     }
 
-    pub fn add_iteration(&self,device_name:String, value:f64){
+    pub fn add_iteration(&self,device_name:String, value:f32){
         let mut all_data = self.data_map.lock().unwrap();
         if !all_data.contains_key(&device_name){
-            all_data.insert(device_name.to_string(),HashMap::new());
+            all_data.insert(device_name.to_string(),BTreeMap::new());
         }
         //Device object should be created at this point, unwrap is safe
         let device_data = all_data.get_mut(&device_name).unwrap();
@@ -43,7 +43,7 @@ impl TestState{
         }
     }
 
-    pub fn get_data(&self) -> HashMap<String,HashMap<OrderedFloat<f64>,u64>>{
+    pub fn get_data(&self) -> HashMap<String,BTreeMap<OrderedFloat<f32>,u64>>{
         self.data_map.lock().unwrap().clone()
     }
 }
@@ -65,9 +65,9 @@ impl OutputFile{
         }
     }
     
-    pub fn write_values(&mut self, current_state:&TestState,mut upper_bound:Option<f64>,mut lower_bound:Option<f64>){
-        let local_upper:f64;
-        let local_lower:f64;
+    pub fn write_values(&mut self, current_state:&TestState,upper_bound:Option<f32>,lower_bound:Option<f32>){
+        let local_upper:f32;
+        let local_lower:f32;
         match upper_bound{
             None => local_upper = DEFAULT_UPPER,
             Some(forced_upper) => local_upper = forced_upper,
@@ -78,7 +78,7 @@ impl OutputFile{
         };
         let data_map = current_state.get_data();
         data_map.iter().for_each(|(device,value_map)|{
-            let mut value_list:Vec<&OrderedFloat<f64>> = value_map.keys().collect();
+            let mut value_list:Vec<&OrderedFloat<f32>> = value_map.keys().collect();
             value_list.sort();
             let mut index_list:Vec<u64> = Vec::new();
             let mut iteration_count = 0;
@@ -89,7 +89,7 @@ impl OutputFile{
                 if value.into_inner() > local_lower && value.into_inner() < local_upper{
                     pass_iteration_count += count;
                 }
-                sum += (value.into_inner() * *count as f64) as u128;
+                sum += (value.into_inner() * *count as f32) as u128;
             });
             let mut counter = 0;
             for value in &value_list{

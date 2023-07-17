@@ -12,7 +12,7 @@ const SERIAL_TIMEOUT: std::time::Duration = Duration::from_millis(500);
 ///----------------------
 
 //Request currently shown temp from device 
-const REQUEST_TEMP: &[u8; 26]= b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x03\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\xe9\x32\x94\xfe";
+const REQUEST_TEMP:   &[u8; 26]= b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x03\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\xe9\x32\x94\xfe";
 
 //Request a device's serial
 const REQUEST_SERIAL: &[u8; 26]= b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x18\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x71\xe8\x80\x3e";
@@ -159,7 +159,7 @@ impl TTY{
         return "Invalid device!".to_string();
     }
 
-    pub fn get_serial(&mut self) -> String { self.serial.clone() }
+    pub fn get_serial(&mut self) -> &str { &self.serial }
 
     pub fn get_temp(&mut self) -> Option<f32> {
         let output = self.tty.write_all(REQUEST_TEMP).is_ok();
