@@ -354,13 +354,39 @@ impl TTY{
                 let temp = TTY::f32_from_bytes(&buffer, &mut buffer_index);
 
                 let disco_temp_status = TTY::u16_from_bytes(&buffer, &mut buffer_index);
-                if disco_temp_status ^ 0x01 != 0{
-                    if disco_temp_status == 0x80{
-                        log::trace!("Calculations incomplete, waiting for response...");
-                        return self.get_temp();
+                if disco_temp_status ^ 0x0001 != 0{
+                    let mut iter = 2;
+                    while iter <= 0x1000{
+                        let temporary = disco_temp_status ^ iter;
+                        if temporary != 0{
+                            match temporary{
+                                0x0002 => log::error!("Temperature above sensor range! Return value considered bad."),
+                                0x0004 => log::error!("Temperature above sensor range! Return value considered bad."),
+                                0x0008 => log::error!("Temperature in undetermined range! Return value is questionable."),
+                                0x0010 => log::error!("Device has flagged 'no alarm' bit?"),
+                                0x0020 => log::error!("Device has thrown 'upper limit' alarm."),
+                                0x0040 => log::error!("Device has thrown 'lower limit' alarm."),
+                                0x0080 => { 
+                                    log::trace!("Device has thrown miscellaneous alarm."); 
+                                    log::trace!("Calculations incomplete, waiting for response...");
+                                    return self.get_temp();
+                                },
+                                0x0100 => log::error!("Device has marked the 'continuous' numeric spot. Consult WACP documentation."),
+                                0x0200 => log::error!("Device marked the 'spot old' numeric spot bit. Consult WACP documentation."),
+                                0x0400 => log::error!("Device marked the 'spot recent' numeric spot bit. Consult WACP documentation."),
+                                0x0800 => log::error!("Device marked the 'spot new' numeric spot bit. Consult WACP documentation."),
+                                0x1000 => { 
+                                    log::error!("Device marked the 'doubious' bit. Returned reading for this cycle is suspect.");
+                                    log::error!("Device returned temperature: {}C",temp - 273.15);
+                                },
+                                _ => {
+                                    log::error!("Disco temp status unimplemented! Returned disco status: {}",disco_temp_status);
+                                    todo!();
+                                }
+                            }
+                            iter *= 2;
+                        }
                     }
-                    log::error!("Disco temp status unimplemented! Returned disco status: {}",disco_temp_status);
-                    todo!();
                 };
 
                 //The value the Disco reports is in Kelvin. Convert to Celsius for easier comparison
