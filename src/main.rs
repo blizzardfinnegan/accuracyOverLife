@@ -100,11 +100,6 @@ fn main() {
             return;
         }
 
-        if let Some(ref mut real_fixture) = fixture{
-            real_fixture.goto_limit(Direction::Down);
-            real_fixture.push_button();
-        }
-
         let mut possible_devices: Vec<Option<TTY>> = Vec::new();
         let mut tty_test_threads: Vec<JoinHandle<Option<TTY>>> = Vec::new();
         for tty in available_ttys.into_iter(){
@@ -143,27 +138,33 @@ fn main() {
         log::info!("Number of devices detected: {}",devices.len());
         log::info!("--------------------------------------\n\n");
 
-        //for device in devices.iter_mut(){
-        //    if !serials_set || args.manual{
-        //      todo!()
-        //    }
-        //}
+        for _device in devices.iter_mut(){
+            if !serials_set || args.manual{
+              todo!();
+            }
+        }
 
-        print!("How many times would you like to test the devices attached to the fixture?");
-        _ = stdout().flush();
-        let mut user_input:String = String::new();
-        stdin().read_line(&mut user_input).expect("Did not input a valid number.");
-        if let Some('\n') = user_input.chars().next_back() {
-            user_input.pop();
-        };
-        if let Some('\r') = user_input.chars().next_back() {
-            user_input.pop();
-        };
+        let iteration_count:u64;
+        if let Some(count) = args.iterations{
+            iteration_count = count;
+        }
+        else{
+            print!("How many times would you like to test the devices attached to the fixture? ");
+            _ = stdout().flush();
+            let mut user_input:String = String::new();
+            stdin().read_line(&mut user_input).expect("Did not input a valid number.");
+            if let Some('\n') = user_input.chars().next_back() {
+                user_input.pop();
+            };
+            if let Some('\r') = user_input.chars().next_back() {
+                user_input.pop();
+            };
 
-        let iteration_count:u64 = user_input.parse().unwrap_or(DEFAULT_ITERATIONS);
+            iteration_count = user_input.parse().unwrap_or(DEFAULT_ITERATIONS);
+        }
 
         for iter in 0..iteration_count{
-            log::info!("Starting iteration {} of {}...",iter, iteration_count);
+            log::info!("Starting iteration {} of {}...",iter+1, iteration_count);
             if let Some(ref mut real_fixture) = fixture{
                 real_fixture.goto_limit(Direction::Up);
                 real_fixture.goto_limit(Direction::Down);
@@ -174,6 +175,7 @@ fn main() {
                 out_file.write_values(&state, None, None);
             }
         }
+        break;
     }
 }
 

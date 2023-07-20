@@ -4,7 +4,7 @@ use std::{io::{BufReader, Write, Read},
 use serialport::SerialPort;
 
 const BAUD_RATE:u32 = 115200;
-const SERIAL_TIMEOUT: std::time::Duration = Duration::from_millis(500);
+const SERIAL_TIMEOUT: std::time::Duration = Duration::from_millis(50);
 
 
 ///----------------------
@@ -63,6 +63,7 @@ impl TTY{
     }
 
     fn parse_serial_response(read_buffer:Vec<u8>) -> String{
+        log::trace!("Requesting serial...");
         //Serial response packet is 147 bytes long
         if read_buffer.len() == 147{
             let buffer = read_buffer.clone();
@@ -85,11 +86,12 @@ impl TTY{
             }
 
             //Buffer[7..8] are port numbers and not actually important for anything for our purposes
+            buffer_index += 2;
             
             let msg_class_id = TTY::u32_from_bytes(&buffer, &mut buffer_index);
             //Expected message class: Temperature Response [assumed]
-            if msg_class_id != 0x00030f00 {
-                log::error!("Unknown message response class: {}. See WACP documentation.",msg_class_id);
+            if msg_class_id != 0x00180f00 {
+                log::error!("Unknown message response class: {}. Expected: 1576704. See WACP documentation.",msg_class_id);
             }
 
             let msg_size = TTY::u32_from_bytes(&buffer, &mut buffer_index);
@@ -116,7 +118,7 @@ impl TTY{
 
             let obj_id = TTY::u32_from_bytes(&buffer, &mut buffer_index);
             //ObjectID = CTempDData
-            if obj_id != 0x00030001{
+            if obj_id != 0x00180000{
                 log::error!("Unknown object ID: {} Consult documentation.",obj_id);
             }
 
@@ -133,7 +135,7 @@ impl TTY{
             //This code is written to interpret version 205. Versions are backwards compatible, at
             //time of writing.
             if obj_version > 0x00cd{
-                log::error!("Object version newer than expected! Manually check response.");
+                log::error!("Object version newer than expected! ({} > 205) Manually check response.",obj_version);
                 panic!("Unexpected object version. Here be dragons.");
             };
 
@@ -146,15 +148,15 @@ impl TTY{
 
             let static_size = TTY::u16_from_bytes(&buffer, &mut buffer_index);
             //Static data in this packet type is expected to take 16 bytes.
-            if static_size != 0x0010{
-                log::error!("Unexpected static variable size. Manually check response.");
+            if static_size != 0x006c{
+                log::error!("Unexpected static variable size ({} != 108). Manually check response.",static_size);
                 panic!("Unexpected static variable size. Here be dragons.");
             };
 
-            for char_val in buffer[45..77].into_iter(){
+            for char_val in buffer[77..93].into_iter(){
                 serial.push(char::from(char_val.clone()));
             };
-            return serial;
+            return serial.trim().trim_end_matches("\0").to_string();
         };
         return "Invalid device!".to_string();
     }
@@ -271,7 +273,7 @@ impl TTY{
 
                 let status = TTY::u16_from_bytes(&buffer, &mut buffer_index);
                 if status == 0x00{
-                    log::error!("Data is not available!");
+                    //log::error!("Data is not available!");
                 }
                 else if status != 0x01{
                     log::error!("Unexpected status value!");
@@ -326,9 +328,8 @@ impl TTY{
                 //bytes counted in encap obj but not in encap obj int. len: 13
                 let encap_obj_size = TTY::u16_from_bytes(&buffer, &mut buffer_index);
                 if encap_obj_size as usize != buffer.len() - 72{
-                    log::error!("Bad encapsulated object size! Expected size: {}, actual size: {}",
-                                                                encap_obj_size, buffer.len() - 72);
-                    panic!("Unexpected encapsulated object size!");
+                    //log::error!("Bad encapsulated object size! Expected size: {}, actual size: {}",encap_obj_size, buffer.len() - 72);
+                    //panic!("Unexpected encapsulated object size!");
                 };
 
                 let encap_obj_version = TTY::u16_from_bytes(&buffer, &mut buffer_index);
@@ -353,8 +354,11 @@ impl TTY{
                 let temp = TTY::f32_from_bytes(&buffer, &mut buffer_index);
 
                 let disco_temp_status = TTY::u16_from_bytes(&buffer, &mut buffer_index);
-                if disco_temp_status ^ 0x0001 != 0{
-                    log::error!("Unexpected disco status! Disco is now in status {}!",disco_temp_status);
+                if disco_temp_status ^ 0x01 != 0{
+                    if disco_temp_status == 0x80{
+                        log::trace!("Calculations incomplete, waiting for response...");
+                        return self.get_temp();
+                    }
                     todo!();
                 };
 
