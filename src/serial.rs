@@ -359,6 +359,7 @@ impl TTY{
                         log::trace!("Calculations incomplete, waiting for response...");
                         return self.get_temp();
                     }
+                    log::error!("Disco temp status unimplemented! Returned disco status: {}",disco_temp_status);
                     todo!();
                 };
 
