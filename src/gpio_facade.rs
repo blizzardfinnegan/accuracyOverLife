@@ -250,7 +250,7 @@ impl Fixture{
         if let Some(piston_enable) = self.piston_enable.as_mut(){
             while !*executor::block_on(MOVE_LOCK.read()){}
             piston_enable.set_high();
-            thread::sleep(Duration::from_secs(1));
+            thread::sleep(Duration::from_millis(250));
             piston_enable.set_low();
         }
     }

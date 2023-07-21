@@ -355,9 +355,10 @@ impl TTY{
 
                 let disco_temp_status = TTY::u16_from_bytes(&buffer, &mut buffer_index);
                 if disco_temp_status ^ 0x0001 != 0{
+                    log::trace!("Status: {}",disco_temp_status);
                     let mut iter = 2;
                     while iter <= 0x1000{
-                        let temporary = disco_temp_status ^ iter;
+                        let temporary = disco_temp_status & iter;
                         if temporary != 0{
                             match temporary{
                                 0x0002 => log::error!("Temperature above sensor range! Return value considered bad."),
@@ -384,13 +385,14 @@ impl TTY{
                                     todo!();
                                 }
                             }
-                            iter *= 2;
                         }
+                        iter *= 2;
                     }
                 };
 
                 //The value the Disco reports is in Kelvin. Convert to Celsius for easier comparison
                 //with bounds.
+                log::info!("Temp from device {}: {}, self.serial, temp-273.15);
                 return Some(temp - 273.15);
             }
             else {
