@@ -392,7 +392,7 @@ impl TTY{
 
                 //The value the Disco reports is in Kelvin. Convert to Celsius for easier comparison
                 //with bounds.
-                log::info!("Temp from device {}: {}, self.serial, temp-273.15);
+                log::info!("Temp from device {}: {}", self.serial, temp-273.15);
                 return Some(temp - 273.15);
             }
             else {

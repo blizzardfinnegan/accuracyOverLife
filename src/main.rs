@@ -1,10 +1,11 @@
 mod gpio_facade;
 mod output_facade;
 mod serial;
-use std::{fs,path::Path,io::{Write,stdin,stdout}, thread::{self, JoinHandle}};
+use std::{fs,path::Path,io::{Write,stdin,stdout}, thread::{self, JoinHandle}, sync::{Arc, atomic::AtomicBool}};
 use chrono::{DateTime,Local};
 use gpio_facade::{Fixture,Direction};
 use glob::glob;
+use signal_hook;
 use clap::Parser;
 use crate::{serial::TTY, output_facade::{OutputFile, TestState}};
 
@@ -29,7 +30,11 @@ struct Args{
     iterations:Option<u64>
 
 }
+
 fn main() {
+    let terminate = Arc::new(AtomicBool::new(false));
+    _ = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&terminate));
+    _ = signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&terminate));
     let args = Args::parse();
     setup_logs(&args.debug);
     log::info!("Rust OCR version {}",VERSION);
@@ -54,128 +59,133 @@ fn main() {
         }
     }
 
-    #[allow(unreachable_code)]
-    loop{
-        let mut available_ttys:Vec<Box<Path>> = Vec::new();
+    while !terminate.load(std::sync::atomic::Ordering::Relaxed){
+        #[allow(unreachable_code)]
+        loop{
+            let mut available_ttys:Vec<Box<Path>> = Vec::new();
 
-        for entry in glob("/dev/serial/*").expect("Failed to read glob pattern"){
-            match entry{
-                Ok(real_path) =>{
-                    match fs::read_dir::<&Path>(real_path.as_ref()){
-                        Ok(possible_ttys) =>{
-                            possible_ttys.into_iter().for_each(|tty| {
-                                if let Ok(single_tty) = tty {
-                                    available_ttys.push(single_tty.path().into());
-                                }
-                            });
-                            break;
+            for entry in glob("/dev/serial/*").expect("Failed to read glob pattern"){
+                match entry{
+                    Ok(real_path) =>{
+                        match fs::read_dir::<&Path>(real_path.as_ref()){
+                            Ok(possible_ttys) =>{
+                                possible_ttys.into_iter().for_each(|tty| {
+                                    if let Ok(single_tty) = tty {
+                                        available_ttys.push(single_tty.path().into());
+                                    }
+                                });
+                                break;
+                            }
+                            Err(error) =>{
+                                log::error!("Invalid permissions to /dev directory... did you run with sudo?");
+                                log::error!("{}",error);
+                                return;
+                            }
                         }
-                        Err(error) =>{
+                    }
+                    Err(error) =>{
+                        log::error!("{}",error);
+                    }
+                }
+            }
+            if available_ttys.is_empty(){
+                for entry in glob::glob("/dev/ttyUSB*").expect("Unable to read glob"){
+                    match entry{
+                        Ok(possible_tty) => available_ttys.push(Path::new(&possible_tty).into()),
+                        Err(error) => {
                             log::error!("Invalid permissions to /dev directory... did you run with sudo?");
                             log::error!("{}",error);
                             return;
                         }
-                    }
-                }
-                Err(error) =>{
-                    log::error!("{}",error);
+                    };
                 }
             }
-        }
-        if available_ttys.is_empty(){
-            for entry in glob::glob("/dev/ttyUSB*").expect("Unable to read glob"){
-                match entry{
-                    Ok(possible_tty) => available_ttys.push(Path::new(&possible_tty).into()),
-                    Err(error) => {
-                        log::error!("Invalid permissions to /dev directory... did you run with sudo?");
-                        log::error!("{}",error);
-                        return;
+
+            if available_ttys.is_empty(){
+                log::error!("No serial devices detected! Please ensure all connections.");
+                return;
+            }
+
+            let mut possible_devices: Vec<Option<TTY>> = Vec::new();
+            let mut tty_test_threads: Vec<JoinHandle<Option<TTY>>> = Vec::new();
+            for tty in available_ttys.into_iter(){
+                tty_test_threads.push( thread::spawn( move|| {
+                    match TTY::new(&tty.to_string_lossy()){
+                        Some(mut port) => {
+                            log::info!("Found device {}!",port.get_serial());
+                            Some(port)
+                        }
+                        None => None
                     }
+                }));
+            }
+
+            for thread in tty_test_threads{
+                let output = thread.join().unwrap_or_else(|x|{log::trace!("{:?}",x); None});
+                possible_devices.push(output);
+            }
+            let mut serials_set:bool = true;
+            let mut devices:Vec<TTY> = Vec::new();
+            let mut device_names:Vec<String> = Vec::new();
+            for possible_device in possible_devices.into_iter(){
+                if let Some(mut device) = possible_device{
+                    if device.get_serial().eq("unknown"){
+                        serials_set = false;
+                    }
+                    device_names.push(device.get_serial().to_string());
+                    devices.push(device);
+                }
+            }
+
+            let mut out_file: OutputFile = OutputFile::new(device_names.clone());
+            let state: TestState = TestState::new(device_names);
+
+            log::info!("--------------------------------------");
+            log::info!("Number of devices detected: {}",devices.len());
+            log::info!("--------------------------------------\n\n");
+
+            for _device in devices.iter_mut(){
+                if !serials_set || args.manual{
+                  todo!();
+                }
+            }
+
+            let iteration_count:u64;
+            if let Some(count) = args.iterations{
+                iteration_count = count;
+            }
+            else{
+                print!("How many times would you like to test the devices attached to the fixture? ");
+                _ = stdout().flush();
+                let mut user_input:String = String::new();
+                stdin().read_line(&mut user_input).expect("Did not input a valid number.");
+                if let Some('\n') = user_input.chars().next_back() {
+                    user_input.pop();
                 };
+                if let Some('\r') = user_input.chars().next_back() {
+                    user_input.pop();
+                };
+
+                iteration_count = user_input.parse().unwrap_or(DEFAULT_ITERATIONS);
             }
-        }
 
-        if available_ttys.is_empty(){
-            log::error!("No serial devices detected! Please ensure all connections.");
-            return;
-        }
-
-        let mut possible_devices: Vec<Option<TTY>> = Vec::new();
-        let mut tty_test_threads: Vec<JoinHandle<Option<TTY>>> = Vec::new();
-        for tty in available_ttys.into_iter(){
-            tty_test_threads.push( thread::spawn( move|| {
-                match TTY::new(&tty.to_string_lossy()){
-                    Some(mut port) => {
-                        log::info!("Found device {}!",port.get_serial());
-                        Some(port)
+            for iter in 0..iteration_count{
+                log::info!("Starting iteration {} of {}...",iter+1, iteration_count);
+                if let Some(ref mut real_fixture) = fixture{
+                    real_fixture.goto_limit(Direction::Up);
+                    real_fixture.goto_limit(Direction::Down);
+                    real_fixture.push_button();
+                    for ref mut device in devices.iter_mut(){
+                        state.add_iteration(device.get_serial().to_string(), device.get_temp().unwrap_or(f32::MAX));
                     }
-                    None => None
+                    out_file.write_values(&state, None, None);
                 }
-            }));
-        }
-
-        for thread in tty_test_threads{
-            let output = thread.join().unwrap_or_else(|x|{log::trace!("{:?}",x); None});
-            possible_devices.push(output);
-        }
-        let mut serials_set:bool = true;
-        let mut devices:Vec<TTY> = Vec::new();
-        let mut device_names:Vec<String> = Vec::new();
-        for possible_device in possible_devices.into_iter(){
-            if let Some(mut device) = possible_device{
-                if device.get_serial().eq("unknown"){
-                    serials_set = false;
-                }
-                device_names.push(device.get_serial().to_string());
-                devices.push(device);
             }
+            break;
         }
-
-        let mut out_file: OutputFile = OutputFile::new(device_names.clone());
-        let state: TestState = TestState::new(device_names);
-
-        log::info!("--------------------------------------");
-        log::info!("Number of devices detected: {}",devices.len());
-        log::info!("--------------------------------------\n\n");
-
-        for _device in devices.iter_mut(){
-            if !serials_set || args.manual{
-              todo!();
-            }
-        }
-
-        let iteration_count:u64;
-        if let Some(count) = args.iterations{
-            iteration_count = count;
-        }
-        else{
-            print!("How many times would you like to test the devices attached to the fixture? ");
-            _ = stdout().flush();
-            let mut user_input:String = String::new();
-            stdin().read_line(&mut user_input).expect("Did not input a valid number.");
-            if let Some('\n') = user_input.chars().next_back() {
-                user_input.pop();
-            };
-            if let Some('\r') = user_input.chars().next_back() {
-                user_input.pop();
-            };
-
-            iteration_count = user_input.parse().unwrap_or(DEFAULT_ITERATIONS);
-        }
-
-        for iter in 0..iteration_count{
-            log::info!("Starting iteration {} of {}...",iter+1, iteration_count);
-            if let Some(ref mut real_fixture) = fixture{
-                real_fixture.goto_limit(Direction::Up);
-                real_fixture.goto_limit(Direction::Down);
-                real_fixture.push_button();
-                for ref mut device in devices.iter_mut(){
-                    state.add_iteration(device.get_serial().to_string(), device.get_temp().unwrap_or(f32::MAX));
-                }
-                out_file.write_values(&state, None, None);
-            }
-        }
-        break;
+    }
+    if let Some(ref mut real_fixture) = fixture{
+        real_fixture.goto_limit(Direction::Up);
     }
 }
 
