@@ -10,7 +10,7 @@ use clap::Parser;
 use crate::{serial::TTY, output_facade::{OutputFile, TestState}};
 
 
-const VERSION:&str = "5.0.0-alpha.1";
+const VERSION:&str = "5.0.0";
 const DEFAULT_ITERATIONS:u64 = 10;
 
 
