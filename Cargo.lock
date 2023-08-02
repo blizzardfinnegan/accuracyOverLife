@@ -483,7 +483,7 @@ checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
 
 [[package]]
 name = "disco_accuracy_over_life"
-version = "5.0.0-alpha.1"
+version = "5.0.0"
 dependencies = [
  "async-std",
  "chrono",
