@@ -161,7 +161,7 @@ impl TTY{
         return "Invalid device!".to_string();
     }
 
-    pub fn get_serial(&mut self) -> &str { &self.serial }
+    pub fn get_serial(&self) -> &str { &self.serial }
 
     pub fn get_temp(&mut self) -> Option<f32> {
         let output = self.tty.write_all(REQUEST_TEMP).is_ok();
