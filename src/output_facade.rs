@@ -5,6 +5,7 @@ use ordered_float::OrderedFloat;
 
 const ITERATION_COUNT:&str="iterations completed this run";
 const PASS_COUNT:&str="passing iterations";
+const PASS_PERCENT:&str="Pass %";
 const DEFAULT_LOWER:f32=35.8;
 const DEFAULT_UPPER:f32=36.2;
 pub struct OutputFile{
@@ -98,7 +99,9 @@ impl OutputFile{
                 saved_data.with_section(Some(&(device.to_owned() + " read value counts").to_string())).set(&value.to_string(),&count.to_string());
             });
 
+            let pass_percent= (iteration_count - (iteration_count - pass_iteration_count)) / iteration_count;
             saved_data.with_section(Some(device))
+                .set(PASS_PERCENT, pass_percent.to_string())
                 .set(ITERATION_COUNT, iteration_count.to_string())
                 .set(PASS_COUNT,pass_iteration_count.to_string());
         });
