@@ -12,10 +12,12 @@ const SERIAL_TIMEOUT: std::time::Duration = Duration::from_millis(50);
 ///----------------------
 
 //Request currently shown temp from device 
-const REQUEST_TEMP:   &[u8; 26]= b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x03\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\xe9\x32\x94\xfe";
+const REQUEST_TEMP:   &[u8; 26]= 
+b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x03\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\xe9\x32\x94\xfe";
 
 //Request a device's serial
-const REQUEST_SERIAL: &[u8; 26]= b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x18\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x71\xe8\x80\x3e";
+const REQUEST_SERIAL: &[u8; 26]= 
+b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x18\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x71\xe8\x80\x3e";
 
 pub struct TTY{
     tty: Box<dyn SerialPort>,
@@ -72,7 +74,12 @@ impl TTY{
             let mut buffer_index:usize = 0;
             //The preamble is weird, and is only 3 bytes long. Putting it in a u32, and setting the
             //first octet to 0
-            let preamble = u32::from_be_bytes([0x00,buffer[buffer_index],buffer[buffer_index + 1],buffer[buffer_index + 2]]);
+            let preamble = u32::from_be_bytes([
+                0x00,
+                buffer[buffer_index],
+                buffer[buffer_index + 1],
+                buffer[buffer_index + 2]
+            ]);
             buffer_index += 3;
             //Predefined WACP Preamble
             if preamble != 0x17010c {
@@ -91,7 +98,8 @@ impl TTY{
             let msg_class_id = TTY::u32_from_bytes(&buffer, &mut buffer_index);
             //Expected message class: Temperature Response [assumed]
             if msg_class_id != 0x00180f00 {
-                log::error!("Unknown message response class: {}. Expected: 1576704. See WACP documentation.",msg_class_id);
+                log::error!("Unknown message response class: {}. Expected: 1576704. See WACP documentation.",
+                                                        msg_class_id);
             }
 
             let msg_size = TTY::u32_from_bytes(&buffer, &mut buffer_index);
@@ -105,7 +113,8 @@ impl TTY{
             //Encryption bytes are not implemented as of now, and this code does not know how to
             //interpret encrypted or compressed data.
             if encrypted != 0x0{
-                log::error!("Message potentially encrypted! Consult documentation concerning bitmask {}!",encrypted);
+                log::error!("Message potentially encrypted! Consult documentation concerning bitmask {}!",
+                                encrypted);
             }
 
             //Bytes counted in packet length but not in msg length: 19

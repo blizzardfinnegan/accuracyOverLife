@@ -31,23 +31,26 @@ pub struct Fixture{
 
 pub enum Direction{Up,Down}
 
+//Reset arm on close
 impl Drop for Fixture{
     fn drop(&mut self) {
         self.reset_arm();
     }
 }
 
+//Custom error
 #[derive(Debug,Clone)]
 pub struct FixtureInitError;
 
+//to_string for the above error
 impl fmt::Display for FixtureInitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Invalid fixture PWM value")
     }
 }
 
+//Improvement: modify implementation to allow for multiple fixtures simultaneously
 impl Fixture{
-    //modify implementation to allow for multiple fixtures simultaneously
     pub fn new() -> Result<Self,FixtureInitError>{
         let possible_gpio = Gpio::new();
         if let Ok(gpio) = possible_gpio{

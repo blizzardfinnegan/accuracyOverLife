@@ -23,7 +23,11 @@ impl TestState{
             data_map:Mutex::new(HashMap::new())
         };
         device_names.iter()
-            .for_each(|device| _ = output.data_map.lock().unwrap().insert(device.trim().trim_end_matches("\0").to_string(),BTreeMap::new()));
+            .for_each(|device| 
+                _ = output.data_map.lock().unwrap().insert(
+                    device.trim().trim_end_matches("\0").to_string(), BTreeMap::new()
+                )
+            );
         return output;
     }
 
