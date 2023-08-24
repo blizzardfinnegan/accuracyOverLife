@@ -27,6 +27,7 @@ impl std::fmt::Debug for TTY{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result{
         let absolute_location = self.tty.name();
         let relative_location:String;
+        //Trim down absolute location to just the relevant portion
         match absolute_location{
             Some(abs_location_string) => {
                 let sectioned_abs_location = abs_location_string.rsplit_once('/');
@@ -45,23 +46,30 @@ impl std::fmt::Debug for TTY{
 }
 
 impl TTY{
+    //TTY constructor
     pub fn new(serial_location:&str) -> Option<Self>{
+        //Initialise serialport with baudrate, timeout, and try to open the device
         let possible_tty = serialport::new(serial_location,BAUD_RATE).timeout(SERIAL_TIMEOUT).open();
+        //If the serialport is real, try to get the serialnumber of the device when initialising the
+        //device
         if let Ok(mut tty) = possible_tty{
             if tty.write_all(REQUEST_SERIAL).is_ok(){
+                //force-write the command to the serialport
                 _ = tty.flush();
+
+                //Read back the response
                 let mut reader = BufReader::new(&mut tty);
                 let mut read_buffer: Vec<u8> = Vec::new();
                 _ = reader.read_to_end(&mut read_buffer);
+
+                //Parse the readbuffer, return the TTY object with a set serialnumber
                 let serial:String = TTY::parse_serial_response(read_buffer);
                 Some(TTY{tty,serial})
             }
-            else{
-                None
-            }
-        } else{
-            None
-        }
+            //If writing to the TTY fails, error out
+            else{ None }
+        //If opening the TTY fails, error out
+        } else{ None }
     }
 
     fn parse_serial_response(read_buffer:Vec<u8>) -> String{
@@ -173,9 +181,14 @@ impl TTY{
     pub fn get_serial(&self) -> &str { &self.serial }
 
     pub fn get_temp(&mut self) -> Option<f32> {
+        //Send command for getting temp from the screen
         let output = self.tty.write_all(REQUEST_TEMP).is_ok();
         _ = self.tty.flush();
+
+        //Wait for a response
         std::thread::sleep(SERIAL_TIMEOUT);
+
+        //If you actually wrote safely...
         if output{
             let mut reader = BufReader::new(&mut self.tty);
             let mut read_buffer: Vec<u8> = Vec::new();
@@ -404,11 +417,14 @@ impl TTY{
                 log::info!("Temp from device {}: {}", self.serial, temp-273.15);
                 return Some(temp - 273.15);
             }
+            //If you didn't get a response back from the device, error out, mark logs
+            //accordingly
             else {
                 log::trace!("Read an empty string from device {:?}. Possible read error.", self);
                 return None;
             };
         };
+        //If you didn't write successfully, error out
         return None;
     }
 
