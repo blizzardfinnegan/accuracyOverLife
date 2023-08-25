@@ -12,10 +12,12 @@ const SERIAL_TIMEOUT: std::time::Duration = Duration::from_millis(50);
 ///----------------------
 
 //Request currently shown temp from device 
-const REQUEST_TEMP:   &[u8; 26]= b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x03\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\xe9\x32\x94\xfe";
+const REQUEST_TEMP:   &[u8; 26]= 
+b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x03\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\xe9\x32\x94\xfe";
 
 //Request a device's serial
-const REQUEST_SERIAL: &[u8; 26]= b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x18\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x71\xe8\x80\x3e";
+const REQUEST_SERIAL: &[u8; 26]= 
+b"\x17\x01\x0c\x00\x00\x00\x1a\x01\x19\x00\x18\x0b\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x71\xe8\x80\x3e";
 
 pub struct TTY{
     tty: Box<dyn SerialPort>,
@@ -25,6 +27,7 @@ impl std::fmt::Debug for TTY{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result{
         let absolute_location = self.tty.name();
         let relative_location:String;
+        //Trim down absolute location to just the relevant portion
         match absolute_location{
             Some(abs_location_string) => {
                 let sectioned_abs_location = abs_location_string.rsplit_once('/');
@@ -43,23 +46,30 @@ impl std::fmt::Debug for TTY{
 }
 
 impl TTY{
+    //TTY constructor
     pub fn new(serial_location:&str) -> Option<Self>{
+        //Initialise serialport with baudrate, timeout, and try to open the device
         let possible_tty = serialport::new(serial_location,BAUD_RATE).timeout(SERIAL_TIMEOUT).open();
+        //If the serialport is real, try to get the serialnumber of the device when initialising the
+        //device
         if let Ok(mut tty) = possible_tty{
             if tty.write_all(REQUEST_SERIAL).is_ok(){
+                //force-write the command to the serialport
                 _ = tty.flush();
+
+                //Read back the response
                 let mut reader = BufReader::new(&mut tty);
                 let mut read_buffer: Vec<u8> = Vec::new();
                 _ = reader.read_to_end(&mut read_buffer);
+
+                //Parse the readbuffer, return the TTY object with a set serialnumber
                 let serial:String = TTY::parse_serial_response(read_buffer);
                 Some(TTY{tty,serial})
             }
-            else{
-                None
-            }
-        } else{
-            None
-        }
+            //If writing to the TTY fails, error out
+            else{ None }
+        //If opening the TTY fails, error out
+        } else{ None }
     }
 
     fn parse_serial_response(read_buffer:Vec<u8>) -> String{
@@ -72,7 +82,12 @@ impl TTY{
             let mut buffer_index:usize = 0;
             //The preamble is weird, and is only 3 bytes long. Putting it in a u32, and setting the
             //first octet to 0
-            let preamble = u32::from_be_bytes([0x00,buffer[buffer_index],buffer[buffer_index + 1],buffer[buffer_index + 2]]);
+            let preamble = u32::from_be_bytes([
+                0x00,
+                buffer[buffer_index],
+                buffer[buffer_index + 1],
+                buffer[buffer_index + 2]
+            ]);
             buffer_index += 3;
             //Predefined WACP Preamble
             if preamble != 0x17010c {
@@ -91,7 +106,8 @@ impl TTY{
             let msg_class_id = TTY::u32_from_bytes(&buffer, &mut buffer_index);
             //Expected message class: Temperature Response [assumed]
             if msg_class_id != 0x00180f00 {
-                log::error!("Unknown message response class: {}. Expected: 1576704. See WACP documentation.",msg_class_id);
+                log::error!("Unknown message response class: {}. Expected: 1576704. See WACP documentation.",
+                                                        msg_class_id);
             }
 
             let msg_size = TTY::u32_from_bytes(&buffer, &mut buffer_index);
@@ -105,7 +121,8 @@ impl TTY{
             //Encryption bytes are not implemented as of now, and this code does not know how to
             //interpret encrypted or compressed data.
             if encrypted != 0x0{
-                log::error!("Message potentially encrypted! Consult documentation concerning bitmask {}!",encrypted);
+                log::error!("Message potentially encrypted! Consult documentation concerning bitmask {}!",
+                                encrypted);
             }
 
             //Bytes counted in packet length but not in msg length: 19
@@ -161,12 +178,17 @@ impl TTY{
         return "Invalid device!".to_string();
     }
 
-    pub fn get_serial(&mut self) -> &str { &self.serial }
+    pub fn get_serial(&self) -> &str { &self.serial }
 
     pub fn get_temp(&mut self) -> Option<f32> {
+        //Send command for getting temp from the screen
         let output = self.tty.write_all(REQUEST_TEMP).is_ok();
         _ = self.tty.flush();
+
+        //Wait for a response
         std::thread::sleep(SERIAL_TIMEOUT);
+
+        //If you actually wrote safely...
         if output{
             let mut reader = BufReader::new(&mut self.tty);
             let mut read_buffer: Vec<u8> = Vec::new();
@@ -392,14 +414,17 @@ impl TTY{
 
                 //The value the Disco reports is in Kelvin. Convert to Celsius for easier comparison
                 //with bounds.
-                log::info!("Temp from device {}: {}, self.serial, temp-273.15);
+                log::info!("Temp from device {}: {}", self.serial, temp-273.15);
                 return Some(temp - 273.15);
             }
+            //If you didn't get a response back from the device, error out, mark logs
+            //accordingly
             else {
                 log::trace!("Read an empty string from device {:?}. Possible read error.", self);
                 return None;
             };
         };
+        //If you didn't write successfully, error out
         return None;
     }
 
